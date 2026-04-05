@@ -579,6 +579,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       }
     }
     // Store split settings for future updates
+    self.currentSelectedIndex = selectedIndex
     self.isSplit = split
     self.rightCountVal = rightCount
     self.currentLabels = labels
@@ -659,6 +660,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
             self.iconScale = CGFloat(truncating: scale)
           }
           let selectedIndex = (args["selectedIndex"] as? NSNumber)?.intValue ?? 0
+          self.currentSelectedIndex = selectedIndex
           self.currentLabels = labels
           self.currentSymbols = symbols
           self.currentActiveSymbols = activeSymbols
@@ -965,6 +967,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
               }
             }
           }
+          self.currentSelectedIndex = selectedIndex
           self.isSplit = split; self.rightCountVal = rightCount; self.leftInsetVal = leftInset; self.rightInsetVal = rightInset
           self.scheduleBadgeLayout()
           result(nil)
@@ -1190,14 +1193,21 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     // Split right
     if let right = tabBarRight, right === tabBar, let items = right.items, let idx = items.firstIndex(of: item), let left = tabBarLeft, let leftItems = left.items {
       if splitRightAsButton {
-        // Button mode: fire callback but restore previous selection
+        // Button mode: fire callback, then deselect right bar on next run loop
+        // (iOS 26 liquid glass ignores synchronous selectedItem = nil)
         channel.invokeMethod("valueChanged", arguments: ["index": leftItems.count + idx])
-        // Deselect right and restore left selection
         let prevIdx = self.currentSelectedIndex
-        if prevIdx < leftItems.count, prevIdx >= 0 {
-          right.selectedItem = nil
-          left.selectedItem = leftItems[prevIdx]
+        DispatchQueue.main.async { [weak self, weak right, weak left] in
+          guard let self = self else { return }
+          self.withSuppressedSelectionCallbacks {
+            right?.selectedItem = nil
+            if let left = left, let leftItems = left.items,
+               prevIdx >= 0, prevIdx < leftItems.count {
+              left.selectedItem = leftItems[prevIdx]
+            }
+          }
         }
+        return
       } else {
         tabBarLeft?.selectedItem = nil
         channel.invokeMethod("valueChanged", arguments: ["index": leftItems.count + idx])

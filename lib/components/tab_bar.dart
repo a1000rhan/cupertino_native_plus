@@ -645,6 +645,9 @@ class _CNTabBarState extends State<CNTabBar> {
         final leftCount = widget.items.length - widget.rightCount;
         final isRightButton =
             widget.split && widget.splitRightAsButton && idx >= leftCount;
+        debugPrint(
+          '[CNTabBar Dart] valueChanged idx:$idx lastIndex:$_lastIndex isRightButton:$isRightButton currentIndex:${widget.currentIndex}',
+        );
         if (isRightButton) {
           // Button mode: always fire callback, don't update _lastIndex
           widget.onTap(idx);
@@ -684,6 +687,9 @@ class _CNTabBarState extends State<CNTabBar> {
 
     try {
       if (_lastIndex != idx) {
+        debugPrint(
+          '[CNTabBar Dart] _syncProps calling setSelectedIndex idx:$idx (was _lastIndex:$_lastIndex)',
+        );
         await ch.invokeMethod('setSelectedIndex', {'index': idx});
         _lastIndex = idx;
       }
