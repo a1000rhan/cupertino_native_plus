@@ -1,10 +1,14 @@
 import SwiftUI
 
 #if os(iOS)
-struct CupertinoSliderView: View {
-  @ObservedObject var model: SliderModel
+public struct CupertinoSliderView: View {
+  @ObservedObject public var model: SliderModel
 
-  var body: some View {
+  public init(model: SliderModel) {
+    self.model = model
+  }
+
+  public var body: some View {
     let slider = Slider(value: $model.value, in: model.min...model.max)
       .disabled(!model.enabled)
       .accentColor(model.tintColor)
@@ -21,10 +25,14 @@ struct CupertinoSliderView: View {
   }
 }
 #elseif os(macOS)
-struct CupertinoSliderView: View {
-  @ObservedObject var model: SliderModel
+public struct CupertinoSliderView: View {
+  @ObservedObject public var model: SliderModel
 
-  var body: some View {
+  public init(model: SliderModel) {
+    self.model = model
+  }
+
+  public var body: some View {
     Group {
       if let s = model.step, s > 0 {
         Slider(value: $model.value, in: model.min...model.max, step: s)
@@ -41,17 +49,24 @@ struct CupertinoSliderView: View {
 }
 #endif
 
-class SliderModel: ObservableObject {
-  @Published var value: Double
-  @Published var min: Double
-  @Published var max: Double
-  @Published var enabled: Bool
-  @Published var tintColor: Color = .accentColor
+public class SliderModel: ObservableObject {
+  @Published public var value: Double
+  @Published public var min: Double
+  @Published public var max: Double
+  @Published public var enabled: Bool
+  @Published public var tintColor: Color = .accentColor
   /// Optional step for macOS; iOS ignores.
-  @Published var step: Double? = nil
-  var onChange: (Double) -> Void
+  @Published public var step: Double? = nil
+  public var onChange: (Double) -> Void
 
-  init(value: Double, min: Double, max: Double, enabled: Bool, step: Double? = nil, onChange: @escaping (Double) -> Void) {
+  public init(
+    value: Double,
+    min: Double,
+    max: Double,
+    enabled: Bool,
+    step: Double? = nil,
+    onChange: @escaping (Double) -> Void
+  ) {
     self.value = value
     self.min = min
     self.max = max

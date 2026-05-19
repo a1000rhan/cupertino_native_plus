@@ -3,19 +3,35 @@ import CoreGraphics
 
 /// Parsed configuration for LiquidGlassContainer. Shared between iOS and macOS.
 /// Platform views convert [tintARGB] to UIColor/NSColor via ImageUtils.colorFromARGB.
-struct LiquidGlassContainerConfig {
-  static let defaultEffect = "regular"
-  static let defaultShape = "capsule"
+public struct LiquidGlassContainerConfig {
+  public static let defaultEffect = "regular"
+  public static let defaultShape = "capsule"
 
-  let effect: String
-  let shape: String
-  let cornerRadius: CGFloat?
-  let tintARGB: Int?
-  let interactive: Bool
-  let isDark: Bool
+  public let effect: String
+  public let shape: String
+  public let cornerRadius: CGFloat?
+  public let tintARGB: Int?
+  public let interactive: Bool
+  public let isDark: Bool
+
+  public init(
+    effect: String,
+    shape: String,
+    cornerRadius: CGFloat?,
+    tintARGB: Int?,
+    interactive: Bool,
+    isDark: Bool
+  ) {
+    self.effect = effect
+    self.shape = shape
+    self.cornerRadius = cornerRadius
+    self.tintARGB = tintARGB
+    self.interactive = interactive
+    self.isDark = isDark
+  }
 
   /// Parses config from platform view [args] (e.g. creation params or updateConfig payload).
-  static func parse(from args: Any?) -> LiquidGlassContainerConfig {
+  public static func parse(from args: Any?) -> LiquidGlassContainerConfig {
     var effect = defaultEffect
     var shape = defaultShape
     var cornerRadius: CGFloat?

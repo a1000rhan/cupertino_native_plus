@@ -27,7 +27,7 @@ struct GlassButtonSwiftUI: View {
   var body: some View {
     let shape = buttonShape
     Button(action: onPressed) {
-     label: { labelContent
+      labelContent
         .padding(config.padding)
         .frame(minWidth: frameMinWidth, maxWidth: frameMaxWidth, minHeight: config.minHeight)
         .contentShape(shape)
@@ -38,7 +38,6 @@ struct GlassButtonSwiftUI: View {
           namespace: namespace
         )
         .animation(.easeInOut(duration: 0.25), value: animState)
-        }
     }
     .disabled(!isEnabled)
   }
@@ -98,8 +97,8 @@ struct GlassButtonSwiftUI: View {
       .labelStyle(.iconOnly)
       .foregroundStyle(effectiveLabelColor ?? .primary)
     } else if let text = title {
-      Label { Text(text).font(theme.labelFont) }
-        .labelStyle(.titleOnly)
+      Text(text)
+        .font(theme.labelFont)
         .foregroundStyle(effectiveLabelColor ?? .primary)
     }
   }

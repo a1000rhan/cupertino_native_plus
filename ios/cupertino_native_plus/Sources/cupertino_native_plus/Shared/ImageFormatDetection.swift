@@ -2,10 +2,10 @@ import Foundation
 
 /// Shared image format detection from path extension and magic bytes.
 /// Used by both iOS and macOS ImageUtils; no UIKit/AppKit dependency.
-enum ImageFormatDetection {
+public enum ImageFormatDetection {
   /// Detects format from path, explicit format string, or data magic bytes.
   /// Returns "svg", "png", "jpg", or nil.
-  static func detect(
+  public static func detect(
     assetPath: String?,
     providedFormat: String? = nil,
     imageData: Data? = nil

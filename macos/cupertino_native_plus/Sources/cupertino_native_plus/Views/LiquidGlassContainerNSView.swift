@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 @available(macOS 26.0, *)
-class LiquidGlassContainerNSView: NSObject, FlutterPlatformView {
+class LiquidGlassContainerNSView: NSObject {
   private let container: NSView
   private var hostingController: NSHostingController<LiquidGlassContainerSwiftUI>
   private let channel: FlutterMethodChannel
@@ -123,7 +123,7 @@ struct LiquidGlassContainerSwiftUI: View {
 }
 
 // Fallback for macOS < 26
-class FallbackLiquidGlassContainerNSView: NSObject, FlutterPlatformView {
+class FallbackLiquidGlassContainerNSView: NSObject {
   private let container: NSView
   
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {

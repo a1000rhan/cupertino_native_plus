@@ -1,10 +1,14 @@
 import SwiftUI
 
 #if os(iOS)
-struct CupertinoSwitchView: View {
-  @ObservedObject var model: SwitchModel
+public struct CupertinoSwitchView: View {
+  @ObservedObject public var model: SwitchModel
 
-  var body: some View {
+  public init(model: SwitchModel) {
+    self.model = model
+  }
+
+  public var body: some View {
     let base = Toggle("", isOn: $model.value)
       .labelsHidden()
       .disabled(!model.enabled)
@@ -41,10 +45,14 @@ struct CupertinoSwitchView: View {
   }
 }
 #elseif os(macOS)
-struct CupertinoSwitchView: View {
-  @ObservedObject var model: SwitchModel
+public struct CupertinoSwitchView: View {
+  @ObservedObject public var model: SwitchModel
 
-  var body: some View {
+  public init(model: SwitchModel) {
+    self.model = model
+  }
+
+  public var body: some View {
     let base = Toggle("", isOn: $model.value)
       .labelsHidden()
       .disabled(!model.enabled)
@@ -61,13 +69,13 @@ struct CupertinoSwitchView: View {
 }
 #endif
 
-class SwitchModel: ObservableObject {
-  @Published var value: Bool
-  @Published var enabled: Bool
-  @Published var tintColor: Color = .accentColor
-  var onChange: (Bool) -> Void
+public class SwitchModel: ObservableObject {
+  @Published public var value: Bool
+  @Published public var enabled: Bool
+  @Published public var tintColor: Color = .accentColor
+  public var onChange: (Bool) -> Void
 
-  init(value: Bool, enabled: Bool, onChange: @escaping (Bool) -> Void) {
+  public init(value: Bool, enabled: Bool, onChange: @escaping (Bool) -> Void) {
     self.value = value
     self.enabled = enabled
     self.onChange = onChange

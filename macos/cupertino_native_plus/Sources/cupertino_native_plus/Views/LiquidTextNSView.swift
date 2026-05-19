@@ -143,7 +143,7 @@ struct LiquidTextSwiftUIMac: View {
 // MARK: - Platform View (macOS 26+)
 
 @available(macOS 26.0, *)
-class LiquidTextNSView: NSObject, FlutterPlatformView {
+class LiquidTextNSView: NSObject {
   private let container: NSView
   private var hostingController: NSHostingController<LiquidTextSwiftUIMac>
   private let channel: FlutterMethodChannel
@@ -201,7 +201,7 @@ class LiquidTextNSView: NSObject, FlutterPlatformView {
 
 // MARK: - Fallback (macOS < 26)
 
-class FallbackLiquidTextNSView: NSObject, FlutterPlatformView {
+class FallbackLiquidTextNSView: NSObject {
   private let container: NSView
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {

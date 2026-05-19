@@ -9,17 +9,17 @@ import SwiftUI
 /// This is shared between iOS and macOS implementations.
 @available(iOS 26.0, macOS 26.0, *)
 public struct GlassButtonConfig {
-  let borderRadius: CGFloat?
-  let padding: EdgeInsets
-  let minHeight: CGFloat
-  let spacing: CGFloat
+  public let borderRadius: CGFloat?
+  public let padding: EdgeInsets
+  public let minHeight: CGFloat
+  public let spacing: CGFloat
   /// Optional fixed width for the button content area. nil means unconstrained.
-  let width: CGFloat?
+  public let width: CGFloat?
   /// When true, the glass content expands to fill available width (maxWidth: .infinity).
-  let expandWidth: Bool
+  public let expandWidth: Bool
   /// Content alignment along the main axis. Matches Flutter's MainAxisAlignment names.
   /// e.g. "center", "spaceBetween", "spaceAround", "spaceEvenly", "start", "end".
-  let contentAlignment: String
+  public let contentAlignment: String
 
   public init(
     borderRadius: CGFloat? = nil,
