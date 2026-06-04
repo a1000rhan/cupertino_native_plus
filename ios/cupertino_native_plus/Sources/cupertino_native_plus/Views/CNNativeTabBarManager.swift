@@ -180,8 +180,6 @@ class CNNativeTabBarManager: NSObject {
         }
 
         tabBar.viewControllers = viewControllers
-        tabBar.selectedIndex = selectedIndex
-        tabBar.delegate = self
 
         // Apply tint colors
         if let tint = tintColor {
@@ -194,7 +192,19 @@ class CNNativeTabBarManager: NSObject {
         // Replace root view controller
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
-            // Embed Flutter view in the selected tab
+            // Snapshot Flutter's last rendered frame before we move it
+            let snapshot = flutterVC.view.snapshotView(afterScreenUpdates: false)
+
+            // Set root FIRST so the view hierarchy has proper bounds before embedding Flutter.
+            // selectedIndex and delegate must be set after entering the window — UITabBarController
+            // can silently reset selectedIndex to 0 if set before the controller is in a window.
+            window.rootViewController = tabBar
+            tabBar.selectedIndex = selectedIndex
+            tabBar.delegate = self
+            tabBar.view.setNeedsLayout()
+            tabBar.view.layoutIfNeeded()
+
+            // Embed Flutter now that layout bounds are resolved
             let selectedVC = viewControllers[selectedIndex]
             if let navController = selectedVC as? UINavigationController,
                let rootVC = navController.topViewController as? FlutterTabViewController {
@@ -203,8 +213,16 @@ class CNNativeTabBarManager: NSObject {
                 flutterTabVC.embedFlutterView(flutterVC.view)
             }
 
-            UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve) {
-                window.rootViewController = tabBar
+            // Overlay snapshot to cover the brief gap before Flutter renders its first frame
+            if let snapshot = snapshot {
+                snapshot.frame = window.bounds
+                snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                window.addSubview(snapshot)
+                UIView.animate(withDuration: 0.3, delay: 0.25, options: .curveEaseInOut) {
+                    snapshot.alpha = 0
+                } completion: { _ in
+                    snapshot.removeFromSuperview()
+                }
             }
 
             self.isEnabled = true
@@ -451,8 +469,25 @@ class CNNativeTabBarManager: NSObject {
 
 extension CNNativeTabBarManager: UITabBarControllerDelegate {
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        let index = tabBarController.viewControllers?.firstIndex(of: viewController) ?? 0
-        notifyTabSelected(index)
+        let index = tabBarController.selectedIndex
+        methodChannel?.invokeMethod("onTabSelected", arguments: ["index": index])
+
+        guard let flutterView = flutterViewController?.view else { return }
+
+        // Defer view-hierarchy changes so UIKit can finish its own tab transition first.
+        // Moving Flutter's view synchronously inside didSelect interrupts the transition
+        // animation and causes the tab bar to require a second tap before responding.
+        DispatchQueue.main.async { [weak self, weak tabBarController] in
+            guard self != nil, let tabBar = tabBarController else { return }
+            var target: FlutterTabViewController?
+            if let nav = tabBar.selectedViewController as? UINavigationController,
+               let root = nav.topViewController as? FlutterTabViewController {
+                target = root
+            } else if let vc = tabBar.selectedViewController as? FlutterTabViewController {
+                target = vc
+            }
+            target?.embedFlutterView(flutterView)
+        }
     }
 }
 
@@ -499,7 +534,7 @@ private class FlutterTabViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .clear
     }
 
     override func viewDidAppear(_ animated: Bool) {
