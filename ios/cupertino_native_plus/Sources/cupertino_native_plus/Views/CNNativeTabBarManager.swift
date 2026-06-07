@@ -94,6 +94,7 @@ class CNNativeTabBarManager: NSObject {
         if tabBarController == nil {
             let tabBar = UITabBarController()
             tabBarController = tabBar
+            NSLog("✅ tabBar: \(tabBar.tabBar)")
 
             // Setup iOS 26 appearance
             setupTabBarAppearance(tabBar)
@@ -217,6 +218,13 @@ class CNNativeTabBarManager: NSObject {
             } else if let flutterTabVC = selectedVC as? FlutterTabViewController {
                 flutterTabVC.embedFlutter(flutterVC)
             }
+
+            // UITabBarController does not invoke the delegate's didSelect on the
+            // initial programmatic selection, so Flutter never learns which tab
+            // is active and any state gated on onTabSelected (segment switch,
+            // routing, etc.) stays frozen until the user taps. Fire it manually.
+            methodChannel?.invokeMethod(
+                "onTabSelected", arguments: ["index": selectedIndex])
 
             // Overlay snapshot to cover the brief gap before Flutter renders its first frame
             if let snapshot = snapshot {
@@ -570,6 +578,7 @@ private class FlutterTabViewController: UIViewController {
     }
 
     func embedFlutterView(_ flutterView: UIView) {
+
         // Remove any existing embedded view
         embeddedFlutterView?.removeFromSuperview()
 
@@ -594,7 +603,6 @@ private class FlutterTabViewController: UIViewController {
         ])
 
         embeddedFlutterView = flutterView
-
         // Force layout update
         view.setNeedsLayout()
         view.layoutIfNeeded()
@@ -609,16 +617,26 @@ private class FlutterTabViewController: UIViewController {
     /// orphaned, which is why the engine sticks on its last frame (the splash)
     /// until something else forces a re-layout (e.g. a tab tap).
     func embedFlutter(_ flutterVC: FlutterViewController) {
-        // Detach from any previous parent.
+        // Detach from any previous parent, bracketing with appearance
+        // callbacks so the engine sees a clean disappear before re-attach.
         if let oldParent = flutterVC.parent, oldParent !== self {
             flutterVC.willMove(toParent: nil)
+            flutterVC.beginAppearanceTransition(false, animated: false)
             flutterVC.view.removeFromSuperview()
+            flutterVC.endAppearanceTransition()
             flutterVC.removeFromParent()
         }
 
         if flutterVC.parent !== self {
             addChild(flutterVC)
+            // Manually trigger the appearance transition. Auto-forwarding only
+            // happens during the parent's own appearance cycle; when we add a
+            // child after the parent is already on-screen, viewWillAppear and
+            // viewDidAppear are never delivered, and the Flutter engine waits
+            // for them before resuming rendering.
+            flutterVC.beginAppearanceTransition(true, animated: false)
             embedFlutterView(flutterVC.view)
+            flutterVC.endAppearanceTransition()
             flutterVC.didMove(toParent: self)
         } else {
             embedFlutterView(flutterVC.view)
