@@ -18,6 +18,10 @@ class CNNativeTabBarManager: NSObject {
     private var isEnabled: Bool = false
     private var tintColor: UIColor?
     private var unselectedTintColor: UIColor?
+    private var shrinkWhileScroll: Bool = false
+    private var shrinkOffset: CGFloat = 16
+    private var lastScrollOffset: CGFloat = 0
+    private var isTabBarShrunk: Bool = false
 
     struct TabConfig {
         let title: String
@@ -71,7 +75,12 @@ class CNNativeTabBarManager: NSObject {
     private var searchOnlyNavController: UINavigationController?
 
     /// Enable native tab bar mode
-    private func enableNativeTabBar(tabs: [TabConfig], selectedIndex: Int, isDark: Bool) {
+    private func enableNativeTabBar(
+        tabs: [TabConfig], selectedIndex: Int, isDark: Bool, shrinkWhileScroll: Bool = false
+    ) {
+        self.shrinkWhileScroll = shrinkWhileScroll
+        self.lastScrollOffset = 0
+        self.isTabBarShrunk = false
         guard let flutterVC = getFlutterViewController() else {
             NSLog("❌ CNNativeTabBarManager: Could not find FlutterViewController")
             return
@@ -337,6 +346,8 @@ class CNNativeTabBarManager: NSObject {
 
         self.isEnabled = false
         self.tabBarController = nil
+        self.shrinkWhileScroll = false
+        self.isTabBarShrunk = false
         NSLog("✅ CNNativeTabBarManager: Native tab bar disabled")
     }
 
@@ -348,7 +359,83 @@ class CNNativeTabBarManager: NSObject {
         tabBar.tabBar.backgroundColor = .clear
     }
 
+    private func showTabBarAnimated() {
+        guard let tabBar = tabBarController, isTabBarShrunk else { return }
+        isTabBarShrunk = false
+        lastScrollOffset = 0
+        applyShrinkState(false, on: tabBar, duration: 0.3)
+    }
+
+    private func handleScrollOffset(_ offset: CGFloat) {
+        guard let tabBar = tabBarController else { return }
+
+        if offset <= 0 {
+            if isTabBarShrunk {
+                isTabBarShrunk = false
+                applyShrinkState(false, on: tabBar)
+            }
+            lastScrollOffset = offset
+            return
+        }
+
+        let delta = offset - lastScrollOffset
+        guard abs(delta) > 4 else { return }
+        lastScrollOffset = offset
+
+        if delta > 0 && !isTabBarShrunk {
+            isTabBarShrunk = true
+            applyShrinkState(true, on: tabBar)
+        } else if delta < 0 && isTabBarShrunk {
+            isTabBarShrunk = false
+            applyShrinkState(false, on: tabBar)
+        }
+    }
+
+    /// Toggles the shrunken state of the whole tab bar, scaling the entire bar
+    /// (including its glass background) and hiding the per-item labels so the
+    /// compact bar reads as a pill of icons. Labels are restored from
+    /// `tabConfigurations` when expanding.
+    private func applyShrinkState(
+        _ shrunk: Bool, on tabBar: UITabBarController, duration: TimeInterval = 0.25
+    ) {
+        // Anchor scaling to the bottom-center so the bar shrinks "into" the
+        // home-indicator area rather than drifting up from the screen edge.
+        tabBar.tabBar.layer.anchorPoint = CGPoint(x: 0.5, y: 1.0)
+        tabBar.tabBar.layer.position = CGPoint(
+            x: tabBar.tabBar.bounds.midX,
+            y: tabBar.tabBar.bounds.maxY
+        )
+
+        if let items = tabBar.tabBar.items {
+            for (index, item) in items.enumerated() {
+                if shrunk {
+                    item.title = nil
+                } else if index < tabConfigurations.count {
+                    item.title = tabConfigurations[index].title
+                }
+            }
+        }
+
+        UIView.animate(withDuration: duration) {
+            if shrunk {
+                // Convert a fixed point-based side margin into a scale factor so
+                // the shrunken bar pulls in by the same number of points on
+                // every screen size, rather than a fixed percentage that looks
+                // tiny on small phones and huge on larger ones.
+                let sideMargin: CGFloat = 24
+                let bottomInset: CGFloat = 8
+                let barWidth = max(tabBar.tabBar.bounds.width, 1)
+                let scale = max(0.5, (barWidth - 2 * sideMargin) / barWidth)
+                tabBar.tabBar.transform = CGAffineTransform(translationX: 0, y: -bottomInset)
+                    .scaledBy(x: scale, y: scale)
+            } else {
+                tabBar.tabBar.transform = .identity
+            }
+        }
+    }
+
     private func notifyTabSelected(_ index: Int) {
+        showTabBarAnimated()
         methodChannel?.invokeMethod("onTabSelected", arguments: ["index": index])
 
         guard let flutterView = flutterViewController?.view,
@@ -394,6 +481,8 @@ class CNNativeTabBarManager: NSObject {
 
             let selectedIndex = (args["selectedIndex"] as? Int) ?? 0
             let isDark = (args["isDark"] as? Bool) ?? false
+            let shrink = (args["shrinkWhileScroll"] as? Bool) ?? false
+            self.shrinkOffset = CGFloat((args["shrinkOffset"] as? Double) ?? 16)
 
             // Parse colors
             if let tint = args["tint"] as? Int {
@@ -403,7 +492,8 @@ class CNNativeTabBarManager: NSObject {
                 unselectedTintColor = ImageUtils.colorFromARGB(unselTint)
             }
 
-            enableNativeTabBar(tabs: tabs, selectedIndex: selectedIndex, isDark: isDark)
+            enableNativeTabBar(
+                tabs: tabs, selectedIndex: selectedIndex, isDark: isDark, shrinkWhileScroll: shrink)
             result(nil)
 
         case "disable":
@@ -491,6 +581,15 @@ class CNNativeTabBarManager: NSObject {
             }
             result(nil)
 
+        case "updateScrollOffset":
+            if let args = call.arguments as? [String: Any],
+                let offset = args["offset"] as? Double,
+                shrinkWhileScroll
+            {
+                handleScrollOffset(CGFloat(offset))
+            }
+            result(nil)
+
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -504,6 +603,7 @@ extension CNNativeTabBarManager: UITabBarControllerDelegate {
         _ tabBarController: UITabBarController, didSelect viewController: UIViewController
     ) {
         let index = tabBarController.selectedIndex
+        showTabBarAnimated()
         methodChannel?.invokeMethod("onTabSelected", arguments: ["index": index])
 
         guard let flutterVC = flutterViewController else { return }

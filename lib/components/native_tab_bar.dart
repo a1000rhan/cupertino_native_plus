@@ -71,6 +71,8 @@ class CNTabBarNative {
     Color? tintColor,
     Color? unselectedTintColor,
     bool? isDark,
+    bool shrinkWhileScroll = false,
+    double shrinkOffset = 16,
   }) async {
     // Only works on iOS 26+
     if (defaultTargetPlatform != TargetPlatform.iOS ||
@@ -107,6 +109,8 @@ class CNTabBarNative {
           .toList(),
       'selectedIndex': selectedIndex,
       'isDark': isDark ?? false,
+      'shrinkWhileScroll': shrinkWhileScroll,
+      'shrinkOffset': shrinkOffset,
       if (tintColor != null) 'tint': tintColor.toARGB32(),
       if (unselectedTintColor != null)
         'unselectedTint': unselectedTintColor.toARGB32(),
@@ -200,6 +204,19 @@ class CNTabBarNative {
   static Future<void> setBrightness({required bool isDark}) async {
     if (!_isEnabled) return;
     await _channel.invokeMethod('setBrightness', {'isDark': isDark});
+  }
+
+  /// Reports the current scroll offset so the native tab bar can shrink/expand.
+  ///
+  /// Call this inside a [ScrollController] listener or a
+  /// [NotificationListener<ScrollNotification>] when [shrinkWhileScroll] was
+  /// set to `true` in [enable]. The tab bar hides while scrolling down and
+  /// reappears when scrolling up or when the list is at the top.
+  ///
+  /// No-op when the native tab bar is not enabled.
+  static Future<void> reportScrollOffset(double offset) async {
+    if (!_isEnabled) return;
+    await _channel.invokeMethod('updateScrollOffset', {'offset': offset});
   }
 
   /// Returns `true` if the native tab bar is currently active on the platform side.
