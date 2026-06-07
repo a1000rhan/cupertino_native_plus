@@ -57,7 +57,8 @@ class CNNativeTabBarManager: NSObject {
 
         // Try to find it from windows
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            let window = windowScene.windows.first(where: { $0.isKeyWindow })
+        {
             if let flutterVC = window.rootViewController as? FlutterViewController {
                 self.flutterViewController = flutterVC
                 return flutterVC
@@ -151,14 +152,16 @@ class CNNativeTabBarManager: NSObject {
 
                 if let symbol = config.sfSymbol, !symbol.isEmpty {
                     if let unselTint = unselectedTintColor {
-                        image = UIImage(systemName: symbol)?.withTintColor(unselTint, renderingMode: .alwaysOriginal)
+                        image = UIImage(systemName: symbol)?.withTintColor(
+                            unselTint, renderingMode: .alwaysOriginal)
                     } else {
                         image = UIImage(systemName: symbol)?.withRenderingMode(.alwaysTemplate)
                     }
                 }
 
                 if let activeSymbol = config.activeSfSymbol, !activeSymbol.isEmpty {
-                    selectedImage = UIImage(systemName: activeSymbol)?.withRenderingMode(.alwaysTemplate)
+                    selectedImage = UIImage(systemName: activeSymbol)?.withRenderingMode(
+                        .alwaysTemplate)
                 } else {
                     selectedImage = image
                 }
@@ -191,7 +194,8 @@ class CNNativeTabBarManager: NSObject {
 
         // Replace root view controller
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            let window = windowScene.windows.first(where: { $0.isKeyWindow })
+        {
             // Snapshot Flutter's last rendered frame before we move it
             let snapshot = flutterVC.view.snapshotView(afterScreenUpdates: false)
 
@@ -207,10 +211,11 @@ class CNNativeTabBarManager: NSObject {
             // Embed Flutter now that layout bounds are resolved
             let selectedVC = viewControllers[selectedIndex]
             if let navController = selectedVC as? UINavigationController,
-               let rootVC = navController.topViewController as? FlutterTabViewController {
-                rootVC.embedFlutterView(flutterVC.view)
+                let rootVC = navController.topViewController as? FlutterTabViewController
+            {
+                rootVC.embedFlutter(flutterVC)
             } else if let flutterTabVC = selectedVC as? FlutterTabViewController {
-                flutterTabVC.embedFlutterView(flutterVC.view)
+                flutterTabVC.embedFlutter(flutterVC)
             }
 
             // Overlay snapshot to cover the brief gap before Flutter renders its first frame
@@ -233,7 +238,9 @@ class CNNativeTabBarManager: NSObject {
     private var ignoreInitialSearchUpdate = true
 
     /// Enable search-only mode (single search tab, no tab bar)
-    private func enableSearchOnlyMode(flutterVC: FlutterViewController, config: TabConfig, isDark: Bool) {
+    private func enableSearchOnlyMode(
+        flutterVC: FlutterViewController, config: TabConfig, isDark: Bool
+    ) {
         // Reset flag
         ignoreInitialSearchUpdate = true
 
@@ -269,11 +276,12 @@ class CNNativeTabBarManager: NSObject {
         self.searchOnlyNavController = navController
 
         // Embed Flutter view FIRST
-        searchVC.embedFlutterView(flutterVC.view)
+        searchVC.embedFlutter(flutterVC)
 
         // Replace root view controller
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            let window = windowScene.windows.first(where: { $0.isKeyWindow })
+        {
             window.rootViewController = navController
             window.makeKeyAndVisible()
 
@@ -296,19 +304,22 @@ class CNNativeTabBarManager: NSObject {
 
         // Remove Flutter view from search-only nav controller if present
         if let navController = searchOnlyNavController,
-           let searchVC = navController.topViewController as? FlutterTabViewController {
+            let searchVC = navController.topViewController as? FlutterTabViewController
+        {
             searchVC.removeFlutterView()
         }
 
         // Remove Flutter view from tab if embedded
         if let tabBar = tabBarController,
-           let selectedVC = tabBar.selectedViewController as? FlutterTabViewController {
+            let selectedVC = tabBar.selectedViewController as? FlutterTabViewController
+        {
             selectedVC.removeFlutterView()
         }
 
         // Restore Flutter as root
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            let window = windowScene.windows.first(where: { $0.isKeyWindow })
+        {
             UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve) {
                 window.rootViewController = flutterVC
             }
@@ -333,12 +344,14 @@ class CNNativeTabBarManager: NSObject {
         methodChannel?.invokeMethod("onTabSelected", arguments: ["index": index])
 
         guard let flutterView = flutterViewController?.view,
-              let tabBar = tabBarController else { return }
+            let tabBar = tabBarController
+        else { return }
 
         // Get the selected view controller - handle navigation controller wrapping for search tab
         var targetVC: FlutterTabViewController?
         if let navController = tabBar.selectedViewController as? UINavigationController,
-           let rootVC = navController.topViewController as? FlutterTabViewController {
+            let rootVC = navController.topViewController as? FlutterTabViewController
+        {
             targetVC = rootVC
         } else if let flutterTabVC = tabBar.selectedViewController as? FlutterTabViewController {
             targetVC = flutterTabVC
@@ -353,8 +366,10 @@ class CNNativeTabBarManager: NSObject {
         switch call.method {
         case "enable":
             guard let args = call.arguments as? [String: Any],
-                  let tabsData = args["tabs"] as? [[String: Any]] else {
-                result(FlutterError(code: "invalid_args", message: "Invalid tabs data", details: nil))
+                let tabsData = args["tabs"] as? [[String: Any]]
+            else {
+                result(
+                    FlutterError(code: "invalid_args", message: "Invalid tabs data", details: nil))
                 return
             }
 
@@ -364,7 +379,9 @@ class CNNativeTabBarManager: NSObject {
                 let activeSymbol = data["activeSfSymbol"] as? String
                 let isSearch = (data["isSearch"] as? Bool) ?? false
                 let badgeCount = data["badgeCount"] as? Int
-                return TabConfig(title: title, sfSymbol: symbol, activeSfSymbol: activeSymbol, isSearchTab: isSearch, badgeCount: badgeCount)
+                return TabConfig(
+                    title: title, sfSymbol: symbol, activeSfSymbol: activeSymbol,
+                    isSearchTab: isSearch, badgeCount: badgeCount)
             }
 
             let selectedIndex = (args["selectedIndex"] as? Int) ?? 0
@@ -387,7 +404,8 @@ class CNNativeTabBarManager: NSObject {
 
         case "setSelectedIndex":
             guard let args = call.arguments as? [String: Any],
-                  let index = args["index"] as? Int else {
+                let index = args["index"] as? Int
+            else {
                 result(FlutterError(code: "invalid_args", message: "Invalid index", details: nil))
                 return
             }
@@ -408,7 +426,8 @@ class CNNativeTabBarManager: NSObject {
 
         case "setSearchText":
             if let args = call.arguments as? [String: Any],
-               let text = args["text"] as? String {
+                let text = args["text"] as? String
+            {
                 searchController?.searchBar.text = text
             }
             result(nil)
@@ -418,8 +437,11 @@ class CNNativeTabBarManager: NSObject {
 
         case "setBadgeCounts":
             guard let args = call.arguments as? [String: Any],
-                  let badgeCounts = args["badgeCounts"] as? [Int?] else {
-                result(FlutterError(code: "invalid_args", message: "Invalid badge counts", details: nil))
+                let badgeCounts = args["badgeCounts"] as? [Int?]
+            else {
+                result(
+                    FlutterError(
+                        code: "invalid_args", message: "Invalid badge counts", details: nil))
                 return
             }
 
@@ -428,7 +450,8 @@ class CNNativeTabBarManager: NSObject {
                     if index < badgeCounts.count {
                         let count = badgeCounts[index]
                         if let count = count, count > 0 {
-                            viewController.tabBarItem.badgeValue = count > 99 ? "99+" : String(count)
+                            viewController.tabBarItem.badgeValue =
+                                count > 99 ? "99+" : String(count)
                         } else {
                             viewController.tabBarItem.badgeValue = nil
                         }
@@ -454,7 +477,8 @@ class CNNativeTabBarManager: NSObject {
 
         case "setBrightness":
             if let args = call.arguments as? [String: Any],
-               let isDark = args["isDark"] as? Bool {
+                let isDark = args["isDark"] as? Bool
+            {
                 tabBarController?.overrideUserInterfaceStyle = isDark ? .dark : .light
             }
             result(nil)
@@ -468,11 +492,13 @@ class CNNativeTabBarManager: NSObject {
 // MARK: - UITabBarControllerDelegate
 
 extension CNNativeTabBarManager: UITabBarControllerDelegate {
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+    func tabBarController(
+        _ tabBarController: UITabBarController, didSelect viewController: UIViewController
+    ) {
         let index = tabBarController.selectedIndex
         methodChannel?.invokeMethod("onTabSelected", arguments: ["index": index])
 
-        guard let flutterView = flutterViewController?.view else { return }
+        guard let flutterVC = flutterViewController else { return }
 
         // Defer view-hierarchy changes so UIKit can finish its own tab transition first.
         // Moving Flutter's view synchronously inside didSelect interrupts the transition
@@ -481,12 +507,13 @@ extension CNNativeTabBarManager: UITabBarControllerDelegate {
             guard self != nil, let tabBar = tabBarController else { return }
             var target: FlutterTabViewController?
             if let nav = tabBar.selectedViewController as? UINavigationController,
-               let root = nav.topViewController as? FlutterTabViewController {
+                let root = nav.topViewController as? FlutterTabViewController
+            {
                 target = root
             } else if let vc = tabBar.selectedViewController as? FlutterTabViewController {
                 target = vc
             }
-            target?.embedFlutterView(flutterView)
+            target?.embedFlutter(flutterVC)
         }
     }
 }
@@ -563,7 +590,7 @@ private class FlutterTabViewController: UIViewController {
             flutterView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             flutterView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             flutterView.topAnchor.constraint(equalTo: view.topAnchor),
-            flutterView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            flutterView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
         embeddedFlutterView = flutterView
@@ -573,6 +600,29 @@ private class FlutterTabViewController: UIViewController {
         view.layoutIfNeeded()
 
         NSLog("✅ FlutterTabViewController: Embedded Flutter view, frame: \(flutterView.frame)")
+    }
+
+    /// Embeds a `FlutterViewController` as a child view controller, not just its
+    /// view. UIKit only delivers `viewWillAppear`/`viewDidAppear` to controllers
+    /// in the hierarchy, and the Flutter engine resumes its render loop in
+    /// response to those callbacks. Moving only the view leaves the controller
+    /// orphaned, which is why the engine sticks on its last frame (the splash)
+    /// until something else forces a re-layout (e.g. a tab tap).
+    func embedFlutter(_ flutterVC: FlutterViewController) {
+        // Detach from any previous parent.
+        if let oldParent = flutterVC.parent, oldParent !== self {
+            flutterVC.willMove(toParent: nil)
+            flutterVC.view.removeFromSuperview()
+            flutterVC.removeFromParent()
+        }
+
+        if flutterVC.parent !== self {
+            addChild(flutterVC)
+            embedFlutterView(flutterVC.view)
+            flutterVC.didMove(toParent: self)
+        } else {
+            embedFlutterView(flutterVC.view)
+        }
     }
 
     func removeFlutterView() {
@@ -604,7 +654,7 @@ private class SearchTabViewController: UIViewController {
             label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             label.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20)
+            label.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
         ])
     }
 
