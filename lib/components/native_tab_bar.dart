@@ -73,6 +73,9 @@ class CNTabBarNative {
     bool? isDark,
     bool shrinkWhileScroll = false,
     double shrinkOffset = 16,
+    List<int?>? badgeCounts,
+    CNTabBarMinimizeBehavior minimizeBehavior =
+        CNTabBarMinimizeBehavior.automatic,
   }) async {
     // Only works on iOS 26+
     if (defaultTargetPlatform != TargetPlatform.iOS ||
@@ -111,6 +114,8 @@ class CNTabBarNative {
       'isDark': isDark ?? false,
       'shrinkWhileScroll': shrinkWhileScroll,
       'shrinkOffset': shrinkOffset,
+      'badgeCounts': badgeCounts,
+      'minimizeBehavior': minimizeBehavior.rawValue,
       if (tintColor != null) 'tint': tintColor.toARGB32(),
       if (unselectedTintColor != null)
         'unselectedTint': unselectedTintColor.toARGB32(),
@@ -204,6 +209,19 @@ class CNTabBarNative {
   static Future<void> setBrightness({required bool isDark}) async {
     if (!_isEnabled) return;
     await _channel.invokeMethod('setBrightness', {'isDark': isDark});
+  }
+
+  /// Updates the iOS 26 native `UITabBarController.tabBarMinimizeBehavior`.
+  ///
+  /// Mirrors SwiftUI's `TabView.tabBarMinimizeBehavior(_:)`. No-op on iOS < 26.
+  /// No-op when the native tab bar is not enabled.
+  static Future<void> setMinimizeBehavior(
+    CNTabBarMinimizeBehavior behavior,
+  ) async {
+    if (!_isEnabled) return;
+    await _channel.invokeMethod('setMinimizeBehavior', {
+      'minimizeBehavior': behavior.rawValue,
+    });
   }
 
   /// Reports the current scroll offset so the native tab bar can shrink/expand.
@@ -311,4 +329,27 @@ class CNTab extends Equatable {
     isSearchTab,
     badgeCount,
   ];
+}
+
+/// Mirrors `UITabBarController.MinimizeBehavior` on iOS 26+.
+///
+/// Equivalent to the SwiftUI `TabBarMinimizeBehavior` values used by
+/// `TabView.tabBarMinimizeBehavior(_:)`.
+enum CNTabBarMinimizeBehavior {
+  /// Never minimize the tab bar.
+  never('never'),
+
+  /// Minimize the tab bar when the user scrolls down.
+  onScrollDown('onScrollDown'),
+
+  /// Minimize the tab bar when the user scrolls up.
+  onScrollUp('onScrollUp'),
+
+  /// System-chosen default minimization behavior.
+  automatic('automatic');
+
+  const CNTabBarMinimizeBehavior(this.rawValue);
+
+  /// Wire-format string sent to the iOS side.
+  final String rawValue;
 }

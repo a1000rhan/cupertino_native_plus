@@ -22,6 +22,9 @@ class CNNativeTabBarManager: NSObject {
     private var shrinkOffset: CGFloat = 16
     private var lastScrollOffset: CGFloat = 0
     private var isTabBarShrunk: Bool = false
+    /// Raw string from Flutter, mapped to `UITabBarController.MinimizeBehavior`
+    /// when applied: "never" | "onScrollDown" | "onScrollUp" | "automatic".
+    private var minimizeBehaviorRaw: String = "automatic"
 
     struct TabConfig {
         let title: String
@@ -319,18 +322,28 @@ class CNNativeTabBarManager: NSObject {
             return
         }
 
-        // Remove Flutter view from search-only nav controller if present
-        if let navController = searchOnlyNavController,
-            let searchVC = navController.topViewController as? FlutterTabViewController
-        {
-            searchVC.removeFlutterView()
+        // Fully detach FlutterViewController from whichever FlutterTabViewController
+        // is currently hosting it. removeFlutterView() only removes the view; without
+        // the full VC-containment teardown UIKit throws the "wrong parent" assertion
+        // when flutterVC is later set as the window's rootViewController.
+        func detach(from vc: UIViewController) {
+            if let tabVC = vc as? FlutterTabViewController {
+                tabVC.removeFlutter(flutterVC)
+            } else if let nav = vc as? UINavigationController,
+                let tabVC = nav.topViewController as? FlutterTabViewController
+            {
+                tabVC.removeFlutter(flutterVC)
+            }
         }
 
-        // Remove Flutter view from tab if embedded
-        if let tabBar = tabBarController,
-            let selectedVC = tabBar.selectedViewController as? FlutterTabViewController
-        {
-            selectedVC.removeFlutterView()
+        if let navController = searchOnlyNavController {
+            detach(from: navController)
+        }
+
+        if let tabBar = tabBarController {
+            for vc in tabBar.viewControllers ?? [] {
+                detach(from: vc)
+            }
         }
 
         // Restore Flutter as root
@@ -357,6 +370,90 @@ class CNNativeTabBarManager: NSObject {
         tabBar.tabBar.backgroundImage = UIImage()
         tabBar.tabBar.shadowImage = UIImage()
         tabBar.tabBar.backgroundColor = .clear
+
+        // Leading/trailing inset from the window edges. `UITabBarAppearance`
+        // has no horizontal-margin property — `UIBarAppearance` only exposes
+        // colors/images/effects — so this is the documented knob: it gives
+        // the tab bar's content area a constant gutter from the screen edges.
+        tabBar.tabBar.insetsLayoutMarginsFromSafeArea = true
+        tabBar.tabBar.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: 0, leading: 24, bottom: 0, trailing: 24)
+
+        // iOS 26 native tab-bar minimize behavior — Apple's first-party
+        // collapse-on-scroll handling. Equivalent to SwiftUI's
+        // `TabView.tabBarMinimizeBehavior(_:)`.
+        applyMinimizeBehavior(to: tabBar)
+    }
+
+    /// Maps the raw string from Flutter to `UITabBarController.MinimizeBehavior`
+    /// and applies it. iOS 26+ only; no-op on older systems.
+    private func applyMinimizeBehavior(to tabBar: UITabBarController) {
+        if #available(iOS 26.0, *) {
+            let behavior: UITabBarController.MinimizeBehavior
+            switch minimizeBehaviorRaw {
+            case "never": behavior = .never
+            case "onScrollUp": behavior = .onScrollUp
+            case "onScrollDown": behavior = .onScrollDown
+            case "automatic": behavior = .automatic
+            default: behavior = .automatic
+            }
+            tabBar.tabBarMinimizeBehavior = behavior
+        }
+    }
+
+    /// Composes an SF Symbol inside a tinted circle and returns the result as a
+    /// tab bar item image. Used to give icons a compact, circular silhouette
+    /// when the bar is shrunk.
+    private func circularizedIcon(
+        symbolName: String,
+        tint: UIColor,
+        background: UIColor,
+        diameter: CGFloat = 30
+    ) -> UIImage? {
+        let size = CGSize(width: diameter, height: diameter)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { _ in
+            background.setFill()
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
+            let config = UIImage.SymbolConfiguration(
+                pointSize: diameter * 0.55, weight: .semibold)
+            if let symbol = UIImage(systemName: symbolName, withConfiguration: config)?
+                .withTintColor(tint, renderingMode: .alwaysOriginal)
+            {
+                let symbolSize = symbol.size
+                let origin = CGPoint(
+                    x: (size.width - symbolSize.width) / 2,
+                    y: (size.height - symbolSize.height) / 2
+                )
+                symbol.draw(at: origin)
+            }
+        }
+        return image.withRenderingMode(.alwaysOriginal)
+    }
+
+    /// Rebuilds the regular (non-circular) image + selectedImage for a tab
+    /// using the original SF Symbol names and the configured tint colors.
+    private func originalIcons(for config: TabConfig) -> (UIImage?, UIImage?) {
+        var image: UIImage?
+        var selectedImage: UIImage?
+
+        if let symbol = config.sfSymbol, !symbol.isEmpty {
+            if let unselTint = unselectedTintColor {
+                image = UIImage(systemName: symbol)?.withTintColor(
+                    unselTint, renderingMode: .alwaysOriginal)
+            } else {
+                image = UIImage(systemName: symbol)?.withRenderingMode(.alwaysTemplate)
+            }
+        }
+
+        if let activeSymbol = config.activeSfSymbol, !activeSymbol.isEmpty {
+            selectedImage = UIImage(systemName: activeSymbol)?
+                .withRenderingMode(.alwaysTemplate)
+        } else {
+            selectedImage = image
+        }
+
+        return (image, selectedImage)
     }
 
     private func showTabBarAnimated() {
@@ -368,6 +465,14 @@ class CNNativeTabBarManager: NSObject {
 
     private func handleScrollOffset(_ offset: CGFloat) {
         guard let tabBar = tabBarController else { return }
+        // `"never"` mirrors UITabBarController.MinimizeBehavior.never — no shrink at all.
+        guard minimizeBehaviorRaw != "never" else {
+            if isTabBarShrunk {
+                isTabBarShrunk = false
+                applyShrinkState(false, on: tabBar)
+            }
+            return
+        }
 
         if offset <= 0 {
             if isTabBarShrunk {
@@ -382,10 +487,23 @@ class CNNativeTabBarManager: NSObject {
         guard abs(delta) > 4 else { return }
         lastScrollOffset = offset
 
-        if delta > 0 && !isTabBarShrunk {
+        // Map the behavior to the scroll direction that should *shrink* the bar.
+        // `automatic` defaults to `onScrollDown`, which matches the SwiftUI
+        // `TabView.tabBarMinimizeBehavior` default Apple ships for iOS 26.
+        let shrinkOnScrollDown: Bool
+        switch minimizeBehaviorRaw {
+        case "onScrollUp": shrinkOnScrollDown = false
+        case "onScrollDown", "automatic": shrinkOnScrollDown = true
+        default: shrinkOnScrollDown = true
+        }
+
+        let isScrollingDown = delta > 0
+        let shouldShrink = isScrollingDown == shrinkOnScrollDown
+
+        if shouldShrink && !isTabBarShrunk {
             isTabBarShrunk = true
             applyShrinkState(true, on: tabBar)
-        } else if delta < 0 && isTabBarShrunk {
+        } else if !shouldShrink && isTabBarShrunk {
             isTabBarShrunk = false
             applyShrinkState(false, on: tabBar)
         }
@@ -408,20 +526,67 @@ class CNNativeTabBarManager: NSObject {
 
         if let items = tabBar.tabBar.items {
             for (index, item) in items.enumerated() {
+                guard index < tabConfigurations.count else { continue }
+                let config = tabConfigurations[index]
                 if shrunk {
+                    // Drop the label and swap to a circular icon for a compact pill look.
                     item.title = nil
-                } else if index < tabConfigurations.count {
-                    item.title = tabConfigurations[index].title
+                    let tint = tintColor ?? .label
+                    let background = (tintColor ?? UIColor.systemBlue).withAlphaComponent(0.18)
+                    if let symbol = config.sfSymbol, !symbol.isEmpty {
+                        let circular = circularizedIcon(
+                            symbolName: symbol, tint: tint, background: background)
+                        item.image = circular
+                        item.selectedImage = circular
+                    }
+                } else {
+                    item.title = config.title
+                    let (image, selectedImage) = originalIcons(for: config)
+                    item.image = image
+                    item.selectedImage = selectedImage
                 }
             }
         }
 
-        UIView.animate(withDuration: duration) {
+        // Swap the bar's appearance and per-item layout *without* UIKit's
+        // implicit springy transition — wrapping the property changes in a
+        // CATransaction with actions disabled suppresses the bounce iOS 26
+        // adds when these properties change on a visible UITabBar.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        let appearance = UITabBarAppearance()
+        if shrunk {
+            appearance.configureWithTransparentBackground()
+            appearance.backgroundColor = .clear
+            appearance.shadowColor = .clear
+        } else {
+            appearance.configureWithDefaultBackground()
+        }
+        tabBar.tabBar.standardAppearance = appearance
+        if #available(iOS 15.0, *) {
+            tabBar.tabBar.scrollEdgeAppearance = appearance
+        }
+
+        if shrunk {
+            tabBar.tabBar.itemPositioning = .centered
+            tabBar.tabBar.itemWidth = 44
+            tabBar.tabBar.itemSpacing = 24
+        } else {
+            tabBar.tabBar.itemPositioning = .automatic
+            tabBar.tabBar.itemWidth = 0
+            tabBar.tabBar.itemSpacing = 0
+        }
+
+        CATransaction.commit()
+
+        // Smooth, non-bouncing transform: explicit ease-in-out, no spring.
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            options: [.curveEaseInOut, .beginFromCurrentState, .allowUserInteraction]
+        ) {
             if shrunk {
-                // Convert a fixed point-based side margin into a scale factor so
-                // the shrunken bar pulls in by the same number of points on
-                // every screen size, rather than a fixed percentage that looks
-                // tiny on small phones and huge on larger ones.
                 let sideMargin: CGFloat = 24
                 let bottomInset: CGFloat = 8
                 let barWidth = max(tabBar.tabBar.bounds.width, 1)
@@ -483,6 +648,7 @@ class CNNativeTabBarManager: NSObject {
             let isDark = (args["isDark"] as? Bool) ?? false
             let shrink = (args["shrinkWhileScroll"] as? Bool) ?? false
             self.shrinkOffset = CGFloat((args["shrinkOffset"] as? Double) ?? 16)
+            self.minimizeBehaviorRaw = (args["minimizeBehavior"] as? String) ?? "automatic"
 
             // Parse colors
             if let tint = args["tint"] as? Int {
@@ -533,6 +699,17 @@ class CNNativeTabBarManager: NSObject {
         case "isEnabled":
             result(isEnabled)
 
+        case "setMinimizeBehavior":
+            if let args = call.arguments as? [String: Any],
+                let raw = args["minimizeBehavior"] as? String
+            {
+                self.minimizeBehaviorRaw = raw
+                if let tabBar = tabBarController {
+                    applyMinimizeBehavior(to: tabBar)
+                }
+            }
+            result(nil)
+
         case "setBadgeCounts":
             guard let args = call.arguments as? [String: Any],
                 let badgeCounts = args["badgeCounts"] as? [Int?]
@@ -582,9 +759,12 @@ class CNNativeTabBarManager: NSObject {
             result(nil)
 
         case "updateScrollOffset":
+            // Drive the manual shrink workaround whenever Flutter reports scroll.
+            // The minimize behavior is consulted inside `handleScrollOffset` —
+            // `"never"` is a no-op, the rest pick the direction that shrinks.
             if let args = call.arguments as? [String: Any],
                 let offset = args["offset"] as? Double,
-                shrinkWhileScroll
+                shrinkWhileScroll || minimizeBehaviorRaw != "never"
             {
                 handleScrollOffset(CGFloat(offset))
             }
@@ -745,6 +925,23 @@ private class FlutterTabViewController: UIViewController {
 
     func removeFlutterView() {
         embeddedFlutterView?.removeFromSuperview()
+        embeddedFlutterView = nil
+    }
+
+    /// Fully detaches a `FlutterViewController` from this parent, including
+    /// the view-controller containment hierarchy. Call this before making
+    /// `FlutterViewController` the window root; without it UIKit throws
+    /// "child VC should have parent (null) but actual parent is FlutterTabViewController".
+    func removeFlutter(_ flutterVC: FlutterViewController) {
+        guard flutterVC.parent === self else {
+            removeFlutterView()
+            return
+        }
+        flutterVC.willMove(toParent: nil)
+        flutterVC.beginAppearanceTransition(false, animated: false)
+        flutterVC.view.removeFromSuperview()
+        flutterVC.endAppearanceTransition()
+        flutterVC.removeFromParent()
         embeddedFlutterView = nil
     }
 }
