@@ -79,7 +79,8 @@ class CNNativeTabBarManager: NSObject {
 
     /// Enable native tab bar mode
     private func enableNativeTabBar(
-        tabs: [TabConfig], selectedIndex: Int, isDark: Bool, shrinkWhileScroll: Bool = false
+        tabs: [TabConfig], selectedIndex: Int, isDark: Bool, shrinkWhileScroll: Bool = false,
+        badgeCounts: [Int?]? = nil
     ) {
         self.shrinkWhileScroll = shrinkWhileScroll
         self.lastScrollOffset = 0
@@ -106,7 +107,6 @@ class CNNativeTabBarManager: NSObject {
         if tabBarController == nil {
             let tabBar = UITabBarController()
             tabBarController = tabBar
-            NSLog("✅ tabBar: \(tabBar.tabBar)")
 
             // Setup iOS 26 appearance
             setupTabBarAppearance(tabBar)
@@ -192,6 +192,18 @@ class CNNativeTabBarManager: NSObject {
                 }
 
                 viewControllers.append(tabVC)
+            }
+        }
+
+        // Top-level badgeCounts takes precedence over per-tab CNTab.badgeCount.
+        if let counts = badgeCounts {
+            for (index, vc) in viewControllers.enumerated() where index < counts.count {
+                let count = counts[index]
+                if let count = count, count > 0 {
+                    vc.tabBarItem.badgeValue = count > 99 ? "99+" : String(count)
+                } else {
+                    vc.tabBarItem.badgeValue = nil
+                }
             }
         }
 
@@ -518,10 +530,11 @@ class CNNativeTabBarManager: NSObject {
     ) {
         // Anchor scaling to the bottom-center so the bar shrinks "into" the
         // home-indicator area rather than drifting up from the screen edge.
+        // position must be in the parent layer's coordinate space — use frame, not bounds.
         tabBar.tabBar.layer.anchorPoint = CGPoint(x: 0.5, y: 1.0)
         tabBar.tabBar.layer.position = CGPoint(
-            x: tabBar.tabBar.bounds.midX,
-            y: tabBar.tabBar.bounds.maxY
+            x: tabBar.tabBar.frame.midX,
+            y: tabBar.tabBar.frame.maxY
         )
 
         if let items = tabBar.tabBar.items {
@@ -587,8 +600,8 @@ class CNNativeTabBarManager: NSObject {
             options: [.curveEaseInOut, .beginFromCurrentState, .allowUserInteraction]
         ) {
             if shrunk {
-                let sideMargin: CGFloat = 24
-                let bottomInset: CGFloat = 8
+                let sideMargin: CGFloat = self.shrinkOffset
+                let bottomInset: CGFloat = self.shrinkOffset / 3
                 let barWidth = max(tabBar.tabBar.bounds.width, 1)
                 let scale = max(0.5, (barWidth - 2 * sideMargin) / barWidth)
                 tabBar.tabBar.transform = CGAffineTransform(translationX: 0, y: -bottomInset)
@@ -603,7 +616,7 @@ class CNNativeTabBarManager: NSObject {
         showTabBarAnimated()
         methodChannel?.invokeMethod("onTabSelected", arguments: ["index": index])
 
-        guard let flutterView = flutterViewController?.view,
+        guard let flutterVC = flutterViewController,
             let tabBar = tabBarController
         else { return }
 
@@ -618,7 +631,7 @@ class CNNativeTabBarManager: NSObject {
         }
 
         if let vc = targetVC {
-            vc.embedFlutterView(flutterView)
+            vc.embedFlutter(flutterVC)
         }
     }
 
@@ -658,8 +671,10 @@ class CNNativeTabBarManager: NSObject {
                 unselectedTintColor = ImageUtils.colorFromARGB(unselTint)
             }
 
+            let topBadgeCounts = args["badgeCounts"] as? [Int?]
             enableNativeTabBar(
-                tabs: tabs, selectedIndex: selectedIndex, isDark: isDark, shrinkWhileScroll: shrink)
+                tabs: tabs, selectedIndex: selectedIndex, isDark: isDark, shrinkWhileScroll: shrink,
+                badgeCounts: topBadgeCounts)
             result(nil)
 
         case "disable":
@@ -730,6 +745,8 @@ class CNNativeTabBarManager: NSObject {
                         } else {
                             viewController.tabBarItem.badgeValue = nil
                         }
+                    } else {
+                        viewController.tabBarItem.badgeValue = nil
                     }
                 }
             }

@@ -77,6 +77,10 @@ class CNTabBarNative {
     CNTabBarMinimizeBehavior minimizeBehavior =
         CNTabBarMinimizeBehavior.automatic,
   }) async {
+    assert(
+      badgeCounts == null || badgeCounts.length == tabs.length,
+      'badgeCounts.length must match tabs.length',
+    );
     // Only works on iOS 26+
     if (defaultTargetPlatform != TargetPlatform.iOS ||
         !PlatformVersion.shouldUseNativeGlass) {
@@ -224,6 +228,9 @@ class CNTabBarNative {
     });
   }
 
+  static double _lastSentOffset = 0;
+  static int _lastSentTimestampMs = 0;
+
   /// Reports the current scroll offset so the native tab bar can shrink/expand.
   ///
   /// Call this inside a [ScrollController] listener or a
@@ -234,6 +241,12 @@ class CNTabBarNative {
   /// No-op when the native tab bar is not enabled.
   static Future<void> reportScrollOffset(double offset) async {
     if (!_isEnabled) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final deltaAbs = (offset - _lastSentOffset).abs();
+    final elapsedMs = nowMs - _lastSentTimestampMs;
+    if (deltaAbs < 4 && elapsedMs < 33) return;
+    _lastSentOffset = offset;
+    _lastSentTimestampMs = nowMs;
     await _channel.invokeMethod('updateScrollOffset', {'offset': offset});
   }
 
