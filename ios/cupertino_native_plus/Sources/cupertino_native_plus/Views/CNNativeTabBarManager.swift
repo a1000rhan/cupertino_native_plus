@@ -853,30 +853,39 @@ class CNNativeTabBarManager: NSObject {
 // MARK: - UITabBarControllerDelegate
 
 extension CNNativeTabBarManager: UITabBarControllerDelegate {
+    /// Re-parents the shared Flutter view into the *destination* tab before
+    /// UIKit's own selection transition begins. `shouldSelect` fires ahead of
+    /// any animation/highlight change, so the target already has Flutter
+    /// content by the time the transition renders — no gap where the empty
+    /// (clear-background) placeholder view is visible.
+    ///
+    /// Embedding used to happen in `didSelect`, deferred a runloop tick via
+    /// `DispatchQueue.main.async` because doing it synchronously there raced
+    /// UIKit's transition and made the bar need a second tap. That race is
+    /// what caused a flash of the empty tab before Flutter snapped back in;
+    /// doing the re-parent earlier (pre-transition) avoids both problems.
+    func tabBarController(
+        _ tabBarController: UITabBarController, shouldSelect viewController: UIViewController
+    ) -> Bool {
+        guard let flutterVC = flutterViewController else { return true }
+        var target: FlutterTabViewController?
+        if let nav = viewController as? UINavigationController,
+            let root = nav.topViewController as? FlutterTabViewController
+        {
+            target = root
+        } else if let vc = viewController as? FlutterTabViewController {
+            target = vc
+        }
+        target?.embedFlutter(flutterVC)
+        return true
+    }
+
     func tabBarController(
         _ tabBarController: UITabBarController, didSelect viewController: UIViewController
     ) {
         let index = tabBarController.selectedIndex
         showTabBarAnimated()
         methodChannel?.invokeMethod("onTabSelected", arguments: ["index": index])
-
-        guard let flutterVC = flutterViewController else { return }
-
-        // Defer view-hierarchy changes so UIKit can finish its own tab transition first.
-        // Moving Flutter's view synchronously inside didSelect interrupts the transition
-        // animation and causes the tab bar to require a second tap before responding.
-        DispatchQueue.main.async { [weak self, weak tabBarController] in
-            guard self != nil, let tabBar = tabBarController else { return }
-            var target: FlutterTabViewController?
-            if let nav = tabBar.selectedViewController as? UINavigationController,
-                let root = nav.topViewController as? FlutterTabViewController
-            {
-                target = root
-            } else if let vc = tabBar.selectedViewController as? FlutterTabViewController {
-                target = vc
-            }
-            target?.embedFlutter(flutterVC)
-        }
     }
 }
 
