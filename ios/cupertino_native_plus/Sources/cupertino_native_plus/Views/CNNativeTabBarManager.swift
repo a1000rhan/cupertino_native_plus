@@ -22,6 +22,7 @@ class CNNativeTabBarManager: NSObject {
     private var shrinkOffset: CGFloat = 16
     private var lastScrollOffset: CGFloat = 0
     private var isTabBarShrunk: Bool = false
+    private var isRTL: Bool = false
     /// Raw string from Flutter, mapped to `UITabBarController.MinimizeBehavior`
     /// when applied: "never" | "onScrollDown" | "onScrollUp" | "automatic".
     private var minimizeBehaviorRaw: String = "automatic"
@@ -201,6 +202,7 @@ class CNNativeTabBarManager: NSObject {
         }
 
         tabBar.viewControllers = viewControllers
+        applyLayoutDirection(to: tabBar)
 
         // Apply tint colors
         if let tint = tintColor {
@@ -279,6 +281,8 @@ class CNNativeTabBarManager: NSObject {
         let navController = UINavigationController(rootViewController: searchVC)
         navController.navigationBar.prefersLargeTitles = true
         navController.overrideUserInterfaceStyle = isDark ? .dark : .light
+        navController.view.semanticContentAttribute = layoutDirection
+        navController.navigationBar.semanticContentAttribute = layoutDirection
 
         // Setup search controller - NOT active by default
         let search = UISearchController(searchResultsController: nil)
@@ -367,6 +371,27 @@ class CNNativeTabBarManager: NSObject {
         self.shrinkWhileScroll = false
         self.isTabBarShrunk = false
         NSLog("✅ CNNativeTabBarManager: Native tab bar disabled")
+    }
+
+    /// Mirrors layout (tab order, nav bar chevrons, etc.) to match the
+    /// Flutter app's text direction. `.unspecified` is intentionally not
+    /// used here — this always reflects an explicit choice from Flutter
+    /// rather than inheriting UIKit's own locale-based default.
+    private var layoutDirection: UISemanticContentAttribute {
+        isRTL ? .forceRightToLeft : .forceLeftToRight
+    }
+
+    /// Applies `layoutDirection` to a tab bar controller and its tab bar.
+    private func applyLayoutDirection(to tabBar: UITabBarController) {
+        let direction = layoutDirection
+        tabBar.view.semanticContentAttribute = direction
+        tabBar.tabBar.semanticContentAttribute = direction
+        for viewController in tabBar.viewControllers ?? [] {
+            viewController.view.semanticContentAttribute = direction
+            if let nav = viewController as? UINavigationController {
+                nav.navigationBar.semanticContentAttribute = direction
+            }
+        }
     }
 
     private func setupTabBarAppearance(_ tabBar: UITabBarController) {
@@ -719,6 +744,7 @@ class CNNativeTabBarManager: NSObject {
             let shrink = (args["shrinkWhileScroll"] as? Bool) ?? false
             self.shrinkOffset = CGFloat((args["shrinkOffset"] as? Double) ?? 16)
             self.minimizeBehaviorRaw = (args["minimizeBehavior"] as? String) ?? "automatic"
+            self.isRTL = (args["isRTL"] as? Bool) ?? false
 
             // Parse colors
             if let tint = args["tint"] as? Int {
@@ -829,6 +855,21 @@ class CNNativeTabBarManager: NSObject {
                 let isDark = args["isDark"] as? Bool
             {
                 tabBarController?.overrideUserInterfaceStyle = isDark ? .dark : .light
+            }
+            result(nil)
+
+        case "setTextDirection":
+            if let args = call.arguments as? [String: Any],
+                let rtl = args["isRTL"] as? Bool
+            {
+                self.isRTL = rtl
+                if let tabBar = tabBarController {
+                    applyLayoutDirection(to: tabBar)
+                }
+                if let navController = searchOnlyNavController {
+                    navController.view.semanticContentAttribute = layoutDirection
+                    navController.navigationBar.semanticContentAttribute = layoutDirection
+                }
             }
             result(nil)
 

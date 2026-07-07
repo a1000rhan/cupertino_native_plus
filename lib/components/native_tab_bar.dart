@@ -60,6 +60,9 @@ class CNTabBarNative {
   /// UITabBarController. Your Flutter content will be displayed within
   /// the selected tab.
   ///
+  /// Pass [textDirection] (e.g. `Directionality.of(context)`) so the native
+  /// tab bar mirrors its layout for right-to-left locales.
+  ///
   /// Only works on iOS 26+. On older versions, this is a no-op.
   static Future<void> enable({
     required List<CNTab> tabs,
@@ -77,6 +80,7 @@ class CNTabBarNative {
     List<int?>? badgeCounts,
     CNTabBarMinimizeBehavior minimizeBehavior =
         CNTabBarMinimizeBehavior.automatic,
+    TextDirection textDirection = TextDirection.ltr,
   }) async {
     assert(
       badgeCounts == null || badgeCounts.length == tabs.length,
@@ -164,6 +168,7 @@ class CNTabBarNative {
       'shrinkOffset': shrinkOffset,
       'badgeCounts': badgeCounts,
       'minimizeBehavior': minimizeBehavior.rawValue,
+      'isRTL': textDirection == TextDirection.rtl,
       if (tintColor != null) 'tint': tintColor.toARGB32(),
       if (unselectedTintColor != null)
         'unselectedTint': unselectedTintColor.toARGB32(),
@@ -259,6 +264,18 @@ class CNTabBarNative {
   static Future<void> setBrightness({required bool isDark}) async {
     if (!_isEnabled) return;
     await _channel.invokeMethod('setBrightness', {'isDark': isDark});
+  }
+
+  /// Notifies the native tab bar of an app text-direction change.
+  ///
+  /// Call this when [Directionality.of(context)] changes (e.g. a locale
+  /// switch between LTR and RTL) if it was not already current in [enable].
+  /// No-op when the native tab bar is not enabled.
+  static Future<void> setTextDirection(TextDirection textDirection) async {
+    if (!_isEnabled) return;
+    await _channel.invokeMethod('setTextDirection', {
+      'isRTL': textDirection == TextDirection.rtl,
+    });
   }
 
   /// Updates the iOS 26 native `UITabBarController.tabBarMinimizeBehavior`.
