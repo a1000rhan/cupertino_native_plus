@@ -131,9 +131,11 @@ class CNTabBarNative {
   /// Disables the native tab bar and restores Flutter-only mode.
   ///
   /// Call this in [State.dispose] of the widget that called [enable].
-  /// No-op when the native tab bar is not already enabled.
-  static Future<void> disable() async {
-    if (!_isEnabled) {
+  /// No-op when the native tab bar is not already enabled, unless
+  /// [forceDisable] is `true`, which sends the disable call regardless
+  /// of tracked state (useful to recover from a desynced [_isEnabled] flag).
+  static Future<void> disable({bool forceDisable = false}) async {
+    if (!_isEnabled && !forceDisable) {
       return;
     }
 
