@@ -30,6 +30,16 @@ class CNNativeTabBarManager: NSObject {
         let title: String
         let sfSymbol: String?
         let activeSfSymbol: String?
+        /// Custom icon sources, checked in this order: xcasset > raw bytes > Flutter asset path.
+        /// Any of these takes precedence over `sfSymbol`/`activeSfSymbol` when present.
+        let xcassetName: String?
+        let activeXcassetName: String?
+        let imageData: Data?
+        let activeImageData: Data?
+        let imageAssetPath: String?
+        let activeImageAssetPath: String?
+        let imageFormat: String?
+        let activeImageFormat: String?
         let isSearchTab: Bool
         let badgeCount: Int?
     }
@@ -160,24 +170,7 @@ class CNNativeTabBarManager: NSObject {
                 tabVC.methodChannel = self.methodChannel
 
                 // Setup tab bar item
-                var image: UIImage?
-                var selectedImage: UIImage?
-
-                if let symbol = config.sfSymbol, !symbol.isEmpty {
-                    if let unselTint = unselectedTintColor {
-                        image = UIImage(systemName: symbol)?.withTintColor(
-                            unselTint, renderingMode: .alwaysOriginal)
-                    } else {
-                        image = UIImage(systemName: symbol)?.withRenderingMode(.alwaysTemplate)
-                    }
-                }
-
-                if let activeSymbol = config.activeSfSymbol, !activeSymbol.isEmpty {
-                    selectedImage = UIImage(systemName: activeSymbol)?.withRenderingMode(
-                        .alwaysTemplate)
-                } else {
-                    selectedImage = image
-                }
+                let (image, selectedImage) = icons(for: config)
 
                 tabVC.tabBarItem = UITabBarItem(
                     title: config.title,
@@ -413,58 +406,101 @@ class CNNativeTabBarManager: NSObject {
         }
     }
 
-    /// Composes an SF Symbol inside a tinted circle and returns the result as a
-    /// tab bar item image. Used to give icons a compact, circular silhouette
-    /// when the bar is shrunk.
+    /// Composes a glyph (custom image or SF Symbol) inside a tinted circle and
+    /// returns the result as a tab bar item image. Used to give icons a
+    /// compact, circular silhouette when the bar is shrunk.
     private func circularizedIcon(
-        symbolName: String,
+        image customImage: UIImage? = nil,
+        symbolName: String? = nil,
         tint: UIColor,
         background: UIColor,
         diameter: CGFloat = 30
     ) -> UIImage? {
         let size = CGSize(width: diameter, height: diameter)
+        let maxGlyphSize = diameter * 0.55
+
+        var glyph: UIImage?
+        if let customImage = customImage {
+            glyph = customImage.withTintColor(tint, renderingMode: .alwaysOriginal)
+        } else if let symbolName = symbolName {
+            let symbolConfig = UIImage.SymbolConfiguration(
+                pointSize: maxGlyphSize, weight: .semibold)
+            glyph = UIImage(systemName: symbolName, withConfiguration: symbolConfig)?
+                .withTintColor(tint, renderingMode: .alwaysOriginal)
+        }
+
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { _ in
             background.setFill()
             UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
-            let config = UIImage.SymbolConfiguration(
-                pointSize: diameter * 0.55, weight: .semibold)
-            if let symbol = UIImage(systemName: symbolName, withConfiguration: config)?
-                .withTintColor(tint, renderingMode: .alwaysOriginal)
-            {
-                let symbolSize = symbol.size
-                let origin = CGPoint(
-                    x: (size.width - symbolSize.width) / 2,
-                    y: (size.height - symbolSize.height) / 2
-                )
-                symbol.draw(at: origin)
-            }
+
+            guard let glyph = glyph else { return }
+            let scale = min(
+                1, maxGlyphSize / max(glyph.size.width, 1),
+                maxGlyphSize / max(glyph.size.height, 1))
+            let glyphSize = CGSize(
+                width: glyph.size.width * scale, height: glyph.size.height * scale)
+            let origin = CGPoint(
+                x: (size.width - glyphSize.width) / 2,
+                y: (size.height - glyphSize.height) / 2
+            )
+            glyph.draw(in: CGRect(origin: origin, size: glyphSize))
         }
         return image.withRenderingMode(.alwaysOriginal)
     }
 
-    /// Rebuilds the regular (non-circular) image + selectedImage for a tab
-    /// using the original SF Symbol names and the configured tint colors.
-    private func originalIcons(for config: TabConfig) -> (UIImage?, UIImage?) {
-        var image: UIImage?
-        var selectedImage: UIImage?
+    /// Resolves a single tab bar icon image, preferring a custom source
+    /// (xcasset > raw bytes > Flutter asset path) over the SF Symbol
+    /// fallback. Pass a non-nil `tint` for `.alwaysOriginal` tinting, or `nil`
+    /// for `.alwaysTemplate` (system-tinted) rendering.
+    private func resolveIcon(
+        xcassetName: String?, imageData: Data?, imageAssetPath: String?, imageFormat: String?,
+        symbol: String?, tint: UIColor?, size: CGFloat = 24
+    ) -> UIImage? {
+        var raw: UIImage?
+        if let name = xcassetName, !name.isEmpty {
+            raw = UIImage(named: name, in: Bundle.main, compatibleWith: nil)
+        } else if let data = imageData {
+            raw = ImageUtils.createImageFromData(
+                data, format: imageFormat, size: CGSize(width: size, height: size))
+        } else if let path = imageAssetPath, !path.isEmpty {
+            raw = ImageUtils.loadFlutterAsset(
+                path, size: CGSize(width: size, height: size), format: imageFormat)
+        }
 
-        if let symbol = config.sfSymbol, !symbol.isEmpty {
-            if let unselTint = unselectedTintColor {
-                image = UIImage(systemName: symbol)?.withTintColor(
-                    unselTint, renderingMode: .alwaysOriginal)
-            } else {
-                image = UIImage(systemName: symbol)?.withRenderingMode(.alwaysTemplate)
+        if let raw = raw {
+            if let tint = tint {
+                return raw.withTintColor(tint, renderingMode: .alwaysOriginal)
             }
+            return raw.withRenderingMode(.alwaysTemplate)
         }
 
-        if let activeSymbol = config.activeSfSymbol, !activeSymbol.isEmpty {
-            selectedImage = UIImage(systemName: activeSymbol)?
-                .withRenderingMode(.alwaysTemplate)
-        } else {
-            selectedImage = image
+        guard let symbol = symbol, !symbol.isEmpty else { return nil }
+        if let tint = tint {
+            return UIImage(systemName: symbol)?.withTintColor(tint, renderingMode: .alwaysOriginal)
         }
+        return UIImage(systemName: symbol)?.withRenderingMode(.alwaysTemplate)
+    }
 
+    /// Builds the unselected/selected tab bar images for a config. The
+    /// selected image falls back to the unselected image when no active-state
+    /// icon is configured, mirroring the original SF-Symbol-only behavior.
+    private func icons(for config: TabConfig) -> (UIImage?, UIImage?) {
+        let image = resolveIcon(
+            xcassetName: config.xcassetName, imageData: config.imageData,
+            imageAssetPath: config.imageAssetPath, imageFormat: config.imageFormat,
+            symbol: config.sfSymbol, tint: unselectedTintColor)
+
+        let hasActiveIcon =
+            !(config.activeXcassetName ?? "").isEmpty || config.activeImageData != nil
+            || !(config.activeImageAssetPath ?? "").isEmpty
+            || !(config.activeSfSymbol ?? "").isEmpty
+        guard hasActiveIcon else { return (image, image) }
+
+        let selectedImage = resolveIcon(
+            xcassetName: config.activeXcassetName, imageData: config.activeImageData,
+            imageAssetPath: config.activeImageAssetPath, imageFormat: config.activeImageFormat,
+            symbol: config.activeSfSymbol, tint: nil)
         return (image, selectedImage)
     }
 
@@ -546,7 +582,16 @@ class CNNativeTabBarManager: NSObject {
                     item.title = nil
                     let tint = tintColor ?? .label
                     let background = (tintColor ?? UIColor.systemBlue).withAlphaComponent(0.18)
-                    if let symbol = config.sfSymbol, !symbol.isEmpty {
+                    let customImage = resolveIcon(
+                        xcassetName: config.xcassetName, imageData: config.imageData,
+                        imageAssetPath: config.imageAssetPath, imageFormat: config.imageFormat,
+                        symbol: nil, tint: nil)
+                    if let customImage = customImage {
+                        let circular = circularizedIcon(
+                            image: customImage, tint: tint, background: background)
+                        item.image = circular
+                        item.selectedImage = circular
+                    } else if let symbol = config.sfSymbol, !symbol.isEmpty {
                         let circular = circularizedIcon(
                             symbolName: symbol, tint: tint, background: background)
                         item.image = circular
@@ -554,7 +599,7 @@ class CNNativeTabBarManager: NSObject {
                     }
                 } else {
                     item.title = config.title
-                    let (image, selectedImage) = originalIcons(for: config)
+                    let (image, selectedImage) = icons(for: config)
                     item.image = image
                     item.selectedImage = selectedImage
                 }
@@ -650,10 +695,22 @@ class CNNativeTabBarManager: NSObject {
                 guard let title = data["title"] as? String else { return nil }
                 let symbol = data["sfSymbol"] as? String
                 let activeSymbol = data["activeSfSymbol"] as? String
+                let xcassetName = data["xcassetName"] as? String
+                let activeXcassetName = data["activeXcassetName"] as? String
+                let imageData = (data["imageData"] as? FlutterStandardTypedData)?.data
+                let activeImageData = (data["activeImageData"] as? FlutterStandardTypedData)?.data
+                let imageAssetPath = data["imageAssetPath"] as? String
+                let activeImageAssetPath = data["activeImageAssetPath"] as? String
+                let imageFormat = data["imageFormat"] as? String
+                let activeImageFormat = data["activeImageFormat"] as? String
                 let isSearch = (data["isSearch"] as? Bool) ?? false
                 let badgeCount = data["badgeCount"] as? Int
                 return TabConfig(
                     title: title, sfSymbol: symbol, activeSfSymbol: activeSymbol,
+                    xcassetName: xcassetName, activeXcassetName: activeXcassetName,
+                    imageData: imageData, activeImageData: activeImageData,
+                    imageAssetPath: imageAssetPath, activeImageAssetPath: activeImageAssetPath,
+                    imageFormat: imageFormat, activeImageFormat: activeImageFormat,
                     isSearchTab: isSearch, badgeCount: badgeCount)
             }
 
